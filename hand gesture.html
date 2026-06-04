@@ -1,0 +1,2272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GestureID Research Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script type="module">
+  import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+  window.__MP = { FilesetResolver, HandLandmarker };
+</script>
+<style>
+/* ══════════════════════════════════════════════════════
+   TOKENS
+══════════════════════════════════════════════════════ */
+:root {
+  --bg:       #07090f;
+  --surface:  #0d1117;
+  --card:     #111820;
+  --border:   rgba(255,255,255,0.07);
+  --border2:  rgba(255,255,255,0.13);
+  --cyan:     #00e5ff;
+  --lime:     #b5ff3b;
+  --rose:     #ff3b6b;
+  --amber:    #ffb300;
+  --txt:      #c9d4e0;
+  --txt-dim:  #4a5a6a;
+  --txt-mid:  #7a90a4;
+  --radius:   6px;
+  --mono:     'DM Mono', monospace;
+  --display:  'Syne', sans-serif;
+  --code:     'Space Mono', monospace;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Noise texture overlay */
+body::after {
+  content:'';
+  position:fixed;inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:9999;opacity:.4;
+}
+
+/* ══════════════════════════════════════════════════════
+   LAYOUT SHELL
+══════════════════════════════════════════════════════ */
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 56px 1fr;
+  min-height: 100vh;
+}
+
+/* ── TOP BAR ── */
+.topbar {
+  grid-column: 1/-1;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.5px;
+  color: #fff;
+}
+
+.brand-dot {
+  width: 28px;height: 28px;
+  background: var(--cyan);
+  border-radius: 6px;
+  display: flex;align-items:center;justify-content:center;
+  font-size: 14px;
+  flex-shrink:0;
+  box-shadow: 0 0 20px rgba(0,229,255,.4);
+}
+
+.brand span { color: var(--cyan); }
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-badge {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.68rem;
+  color: var(--txt-mid);
+  letter-spacing: 1px;
+}
+
+.topbar-badge b { color: var(--lime); }
+
+.pip {
+  width: 7px;height: 7px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 8px var(--lime);
+  animation: pip-blink 2s ease-in-out infinite;
+}
+@keyframes pip-blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+}
+
+.nav-section {
+  font-size: 0.6rem;
+  letter-spacing: 2px;
+  color: var(--txt-dim);
+  text-transform: uppercase;
+  padding: 12px 10px 6px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--txt-mid);
+  transition: all .15s;
+  border: 1px solid transparent;
+  position: relative;
+}
+
+.nav-item:hover { background: var(--card); color: var(--txt); }
+
+.nav-item.active {
+  background: rgba(0,229,255,.08);
+  color: var(--cyan);
+  border-color: rgba(0,229,255,.2);
+}
+
+.nav-item.active::before {
+  content:'';
+  position: absolute;
+  left: 0; top: 20%; height: 60%;
+  width: 2px;
+  background: var(--cyan);
+  border-radius: 2px;
+}
+
+.nav-icon { font-size: 1rem; width: 20px; text-align: center; }
+
+.nav-badge {
+  margin-left: auto;
+  background: rgba(0,229,255,.15);
+  color: var(--cyan);
+  font-size: 0.6rem;
+  padding: 2px 6px;
+  border-radius: 20px;
+  font-family: var(--code);
+}
+
+.sidebar-user {
+  margin-top: auto;
+  padding: 12px;
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.user-select-label {
+  font-size: 0.6rem;
+  color: var(--txt-dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+select.user-select {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--txt);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+select.user-select option { background: var(--surface); }
+
+/* ── MAIN CONTENT ── */
+.main {
+  padding: 32px;
+  overflow-y: auto;
+  max-height: calc(100vh - 56px);
+}
+
+/* ══════════════════════════════════════════════════════
+   PAGE SYSTEM
+══════════════════════════════════════════════════════ */
+.page { display: none; animation: fade-up .25s ease; }
+.page.active { display: block; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ══════════════════════════════════════════════════════
+   COMPONENTS
+══════════════════════════════════════════════════════ */
+
+/* PAGE HEADER */
+.page-header {
+  margin-bottom: 28px;
+}
+
+.page-eyebrow {
+  font-size: 0.65rem;
+  letter-spacing: 3px;
+  color: var(--txt-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.page-title {
+  font-family: var(--display);
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+.page-title span { color: var(--cyan); }
+.page-desc { color: var(--txt-mid); font-size: 0.82rem; margin-top: 6px; }
+
+/* CARD */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-title {
+  font-family: var(--display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.card-subtitle {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: var(--txt-dim);
+  letter-spacing: 1px;
+}
+
+.card-body { padding: 18px; }
+
+/* GRID LAYOUTS */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+.grid-video { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+
+/* STAT CARD */
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+
+.stat-card.cyan::before  { background: var(--cyan); }
+.stat-card.lime::before  { background: var(--lime); }
+.stat-card.rose::before  { background: var(--rose); }
+.stat-card.amber::before { background: var(--amber); }
+
+.stat-label {
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  color: var(--txt-dim);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-family: var(--display);
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+
+.stat-value.cyan  { color: var(--cyan); }
+.stat-value.lime  { color: var(--lime); }
+.stat-value.rose  { color: var(--rose); }
+.stat-value.amber { color: var(--amber); }
+
+.stat-sub {
+  font-size: 0.65rem;
+  color: var(--txt-dim);
+  margin-top: 6px;
+}
+
+/* BUTTON */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all .15s;
+  letter-spacing: .5px;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary {
+  background: var(--cyan);
+  color: #000;
+  font-weight: 700;
+}
+.btn-primary:hover { background: #33ecff; box-shadow: 0 0 24px rgba(0,229,255,.4); }
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--border2);
+  color: var(--txt);
+}
+.btn-outline:hover { border-color: var(--cyan); color: var(--cyan); }
+
+.btn-danger {
+  background: transparent;
+  border-color: rgba(255,59,107,.3);
+  color: var(--rose);
+}
+.btn-danger:hover { background: rgba(255,59,107,.1); }
+
+.btn-lg { padding: 14px 28px; font-size: 0.9rem; }
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-recording {
+  background: var(--rose) !important;
+  color: #fff !important;
+  animation: rec-pulse .7s ease-in-out infinite alternate;
+}
+@keyframes rec-pulse {
+  from { box-shadow: 0 0 10px rgba(255,59,107,.4); }
+  to   { box-shadow: 0 0 30px rgba(255,59,107,.8); }
+}
+
+/* BADGE */
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 0.62rem;
+  font-family: var(--code);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.badge-cyan   { background: rgba(0,229,255,.12); color: var(--cyan); }
+.badge-lime   { background: rgba(181,255,59,.12); color: var(--lime); }
+.badge-rose   { background: rgba(255,59,107,.12); color: var(--rose); }
+.badge-amber  { background: rgba(255,179,0,.12);  color: var(--amber); }
+.badge-dim    { background: rgba(255,255,255,.06); color: var(--txt-mid); }
+
+/* TAG */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  letter-spacing: 1px;
+}
+
+/* DIVIDER */
+.divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+/* INPUT */
+.input-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.input-label { font-size: 0.7rem; color: var(--txt-mid); letter-spacing: 1px; }
+.input {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--txt);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  padding: 10px 14px;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+}
+.input:focus { border-color: var(--cyan); }
+
+/* RANGE SLIDER */
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.range-label { font-size: 0.72rem; color: var(--txt-mid); min-width: 110px; }
+input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 3px;
+  background: var(--border2);
+  border-radius: 3px;
+  outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  background: var(--cyan);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--cyan);
+}
+.range-val {
+  font-family: var(--code);
+  font-size: 0.72rem;
+  color: var(--cyan);
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ══════════════════════════════════════════════════════
+   VIDEO / CAPTURE COMPONENTS
+══════════════════════════════════════════════════════ */
+.video-container {
+  position: relative;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  aspect-ratio: 4/3;
+  border: 1px solid var(--border);
+}
+
+video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scaleX(-1);
+  opacity: 0;
+  transition: opacity .4s;
+}
+video.live { opacity: 1; }
+
+#overlay-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  transform: scaleX(-1);
+}
+
+.cam-idle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  transition: opacity .3s;
+}
+.cam-idle.hidden { opacity: 0; pointer-events: none; }
+
+.cam-idle-icon {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  position: relative;
+}
+.cam-idle-icon::before {
+  content: '';
+  position: absolute; inset: -4px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  animation: idle-spin 6s linear infinite;
+}
+@keyframes idle-spin { to { transform: rotate(360deg); } }
+
+.cam-idle-text {
+  font-size: 0.7rem;
+  color: var(--txt-dim);
+  letter-spacing: 2px;
+  text-align: center;
+  line-height: 1.8;
+}
+
+/* HUD overlay */
+.cam-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+}
+.cam-hud.show { display: block; }
+
+.hud-corner {
+  position: absolute;
+  width: 20px; height: 20px;
+  border-color: var(--cyan);
+  border-style: solid;
+  opacity: .5;
+}
+.hud-corner.tl { top:10px;left:10px;  border-width:1px 0 0 1px; }
+.hud-corner.tr { top:10px;right:10px; border-width:1px 1px 0 0; }
+.hud-corner.bl { bottom:10px;left:10px;  border-width:0 0 1px 1px; }
+.hud-corner.br { bottom:10px;right:10px; border-width:0 1px 1px 0; }
+
+.hud-tag {
+  position: absolute;
+  font-family: var(--code);
+  font-size: 0.58rem;
+  color: var(--cyan);
+  letter-spacing: 1.5px;
+  background: rgba(0,0,0,.5);
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+.hud-tag.tl { top: 12px; left: 36px; }
+.hud-tag.tr { top: 12px; right: 36px; }
+.hud-tag.bl { bottom: 12px; left: 36px; }
+
+/* Progress bar */
+.cap-progress {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: rgba(0,0,0,.4);
+  display: none;
+}
+.cap-progress.show { display: block; }
+.cap-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--rose), var(--cyan));
+  transition: width .1s linear;
+}
+
+/* ══════════════════════════════════════════════════════
+   WAVEFORM
+══════════════════════════════════════════════════════ */
+.waveform-wrap {
+  padding: 14px;
+  background: rgba(0,0,0,.3);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.waveform-label {
+  font-size: 0.62rem;
+  letter-spacing: 2px;
+  color: var(--txt-dim);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+#wave-canvas {
+  width: 100%;
+  height: 56px;
+  border-radius: 3px;
+}
+
+/* ══════════════════════════════════════════════════════
+   LOG
+══════════════════════════════════════════════════════ */
+.log-wrap {
+  background: var(--surface);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  padding: 12px;
+  height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.log-entry {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 0.68rem;
+  border-bottom: 1px solid rgba(255,255,255,.03);
+  animation: log-in .2s ease;
+}
+@keyframes log-in { from { opacity: 0; transform: translateX(-4px); } to { opacity:1; transform:translateX(0); } }
+.log-t   { color: var(--txt-dim); min-width: 60px; font-family: var(--code); }
+.log-m   { color: var(--txt); }
+.log-m.s { color: var(--lime); }
+.log-m.e { color: var(--rose); }
+.log-m.i { color: var(--cyan); }
+.log-m.w { color: var(--amber); }
+
+/* ══════════════════════════════════════════════════════
+   TABLE
+══════════════════════════════════════════════════════ */
+.tbl { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.tbl th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 0.62rem;
+  letter-spacing: 2px;
+  color: var(--txt-dim);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+.tbl td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--txt);
+  vertical-align: middle;
+}
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr:hover td { background: rgba(255,255,255,.02); }
+
+/* ══════════════════════════════════════════════════════
+   CHART CANVAS
+══════════════════════════════════════════════════════ */
+.chart-wrap {
+  position: relative;
+  height: 180px;
+}
+#acc-chart, #conf-chart {
+  width: 100%;
+  height: 100%;
+}
+
+/* ══════════════════════════════════════════════════════
+   MODAL
+══════════════════════════════════════════════════════ */
+.modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.8);
+  backdrop-filter: blur(6px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s;
+}
+.modal-bg.show { opacity: 1; pointer-events: all; }
+
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  width: 380px;
+  text-align: center;
+  padding: 40px 32px;
+  transform: scale(.92);
+  transition: transform .25s;
+  position: relative;
+}
+.modal-bg.show .modal { transform: scale(1); }
+
+.modal-result-icon { font-size: 3.5rem; margin-bottom: 16px; display: block; animation: pop .4s cubic-bezier(.17,.67,.3,1.5); }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.modal-result-title {
+  font-family: var(--display);
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.modal-result-title.granted { color: var(--lime); }
+.modal-result-title.denied  { color: var(--rose); }
+.modal-result-title.saved   { color: var(--cyan); }
+
+.modal-score {
+  font-family: var(--code);
+  font-size: 2.8rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.modal-score.granted { color: var(--lime); }
+.modal-score.denied  { color: var(--rose); }
+
+.modal-desc {
+  font-size: 0.75rem;
+  color: var(--txt-mid);
+  letter-spacing: 1px;
+  line-height: 1.7;
+  margin-bottom: 24px;
+}
+
+/* ══════════════════════════════════════════════════════
+   HOME PAGE
+══════════════════════════════════════════════════════ */
+.hero {
+  background: linear-gradient(135deg, rgba(0,229,255,.06) 0%, transparent 60%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 40px;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 220px; height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,229,255,.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,229,255,.1);
+  border: 1px solid rgba(0,229,255,.2);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.65rem;
+  color: var(--cyan);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+.hero-title {
+  font-family: var(--display);
+  font-size: 2.6rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.1;
+  margin-bottom: 14px;
+  letter-spacing: -1px;
+}
+.hero-title span { color: var(--cyan); }
+.hero-desc {
+  color: var(--txt-mid);
+  font-size: 0.88rem;
+  max-width: 560px;
+  line-height: 1.7;
+  margin-bottom: 28px;
+}
+.hero-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+.feature-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.feature-icon { font-size: 1.6rem; margin-bottom: 10px; }
+.feature-title {
+  font-family: var(--display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.feature-desc { font-size: 0.72rem; color: var(--txt-dim); line-height: 1.6; }
+
+/* ══════════════════════════════════════════════════════
+   SCROLLBAR
+══════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ══════════════════════════════════════════════════════
+   UTILITY
+══════════════════════════════════════════════════════ */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+.gap-20 { gap: 20px; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.mt-8 { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mt-20 { margin-top: 20px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-20 { margin-bottom: 20px; }
+.text-dim { color: var(--txt-dim); }
+.text-mid { color: var(--txt-mid); }
+.text-cyan { color: var(--cyan); }
+.text-lime { color: var(--lime); }
+.text-rose { color: var(--rose); }
+.font-code { font-family: var(--code); }
+.font-display { font-family: var(--display); }
+.text-sm { font-size: 0.75rem; }
+.text-xs { font-size: 0.65rem; }
+.w-full { width: 100%; }
+.rounded { border-radius: var(--radius); }
+.p-16 { padding: 16px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ─── TOPBAR ─── -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-dot">🖐</div>
+      Gesture<span>ID</span>
+    </div>
+    <div class="topbar-badge">RESEARCH PROTOTYPE v1.0</div>
+    <div class="topbar-right">
+      <div class="topbar-badge">USER: <b id="tb-user">—</b></div>
+      <div class="topbar-badge">PROFILES: <b id="tb-profiles">0</b></div>
+      <div class="pip" id="mp-pip" title="MediaPipe status"></div>
+    </div>
+  </header>
+
+  <!-- ─── SIDEBAR ─── -->
+  <nav class="sidebar">
+    <div class="nav-section">Navigation</div>
+    <div class="nav-item active" onclick="goTo('home',this)">
+      <span class="nav-icon">🏠</span> Overview
+    </div>
+    <div class="nav-item" onclick="goTo('register',this)">
+      <span class="nav-icon">✋</span> Register
+    </div>
+    <div class="nav-item" onclick="goTo('verify',this)">
+      <span class="nav-icon">🔐</span> Verify
+    </div>
+
+    <div class="nav-section">Research</div>
+    <div class="nav-item" onclick="goTo('dashboard',this)">
+      <span class="nav-icon">📊</span> Dashboard
+      <span class="nav-badge" id="nb-attempts">0</span>
+    </div>
+    <div class="nav-item" onclick="goTo('profiles',this)">
+      <span class="nav-icon">👥</span> Profiles
+      <span class="nav-badge" id="nb-profiles">0</span>
+    </div>
+    <div class="nav-item" onclick="goTo('settings',this)">
+      <span class="nav-icon">⚙️</span> Settings
+    </div>
+
+    <div class="sidebar-user">
+      <div class="user-select-label">Active Profile</div>
+      <select class="user-select" id="user-select" onchange="switchUser(this.value)">
+        <option value="">— Select user —</option>
+      </select>
+    </div>
+  </nav>
+
+  <!-- ─── MAIN ─── -->
+  <main class="main">
+
+    <!-- ════════ HOME PAGE ════════ -->
+    <div class="page active" id="page-home">
+      <div class="hero">
+        <div class="hero-tag"><span>🔬</span> Research Prototype · Browser Native</div>
+        <div class="hero-title">Gesture-Based<br><span>Secure Auth</span></div>
+        <div class="hero-desc">
+          A zero-server biometric authentication system powered by MediaPipe Hand Landmark detection.
+          Register hand gestures, verify identities, and analyze accuracy metrics — entirely in your browser.
+        </div>
+        <div class="hero-btns">
+          <button class="btn btn-primary btn-lg" onclick="goTo('register', document.querySelector('.nav-item:nth-child(3)'))">
+            ✋ Register Gesture
+          </button>
+          <button class="btn btn-outline btn-lg" onclick="goTo('verify', document.querySelectorAll('.nav-item')[2])">
+            🔐 Verify Identity
+          </button>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🤚</div>
+          <div class="feature-title">21 Landmark Detection</div>
+          <div class="feature-desc">MediaPipe extracts 21 3D keypoints per hand frame for high-fidelity gesture fingerprinting.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📐</div>
+          <div class="feature-title">Cosine Similarity</div>
+          <div class="feature-desc">Normalized landmark vectors compared via cosine distance for rotation-invariant matching.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🗄️</div>
+          <div class="feature-title">LocalStorage Persistence</div>
+          <div class="feature-desc">Gesture signatures persist across sessions using browser storage — no server needed.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">👥</div>
+          <div class="feature-title">Multi-User Profiles</div>
+          <div class="feature-desc">Register and manage multiple user gesture profiles in a single session.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📈</div>
+          <div class="feature-title">Research Dashboard</div>
+          <div class="feature-desc">Track accuracy rate, confidence scores, attempt history, and export raw session data.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚙️</div>
+          <div class="feature-title">Tunable Parameters</div>
+          <div class="feature-desc">Adjust similarity threshold, capture duration, and frame sampling for research experiments.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Quick Start</div>
+        </div>
+        <div class="card-body">
+          <div class="flex gap-20">
+            <div style="flex:1">
+              <div class="flex gap-12 items-center mb-16">
+                <div style="width:28px;height:28px;border-radius:50%;background:rgba(0,229,255,.15);border:1px solid rgba(0,229,255,.3);display:flex;align-items:center;justify-content:center;font-size:.8rem;color:var(--cyan);flex-shrink:0">1</div>
+                <div><div class="text-sm" style="color:#fff;margin-bottom:2px">Create a profile</div><div class="text-xs text-dim">Go to Profiles → Add New User</div></div>
+              </div>
+              <div class="flex gap-12 items-center mb-16">
+                <div style="width:28px;height:28px;border-radius:50%;background:rgba(181,255,59,.1);border:1px solid rgba(181,255,59,.3);display:flex;align-items:center;justify-content:center;font-size:.8rem;color:var(--lime);flex-shrink:0">2</div>
+                <div><div class="text-sm" style="color:#fff;margin-bottom:2px">Register your gesture</div><div class="text-xs text-dim">Hold a hand pose for the capture duration</div></div>
+              </div>
+              <div class="flex gap-12 items-center">
+                <div style="width:28px;height:28px;border-radius:50%;background:rgba(255,59,107,.1);border:1px solid rgba(255,59,107,.3);display:flex;align-items:center;justify-content:center;font-size:.8rem;color:var(--rose);flex-shrink:0">3</div>
+                <div><div class="text-sm" style="color:#fff;margin-bottom:2px">Run verification experiments</div><div class="text-xs text-dim">Test matching accuracy with different thresholds</div></div>
+              </div>
+            </div>
+            <div style="flex:1">
+              <div class="stat-card cyan" style="margin-bottom:10px">
+                <div class="stat-label">Registered Profiles</div>
+                <div class="stat-value cyan" id="home-profiles">0</div>
+                <div class="stat-sub">stored in browser</div>
+              </div>
+              <div class="stat-card lime">
+                <div class="stat-label">Total Attempts</div>
+                <div class="stat-value lime" id="home-attempts">0</div>
+                <div class="stat-sub">this session</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ REGISTER PAGE ════════ -->
+    <div class="page" id="page-register">
+      <div class="page-header">
+        <div class="page-eyebrow">Biometric Enrollment</div>
+        <div class="page-title">Register <span>Gesture</span></div>
+        <div class="page-desc">Hold your chosen hand pose steady during the capture window. The system builds a 63-dimensional signature vector.</div>
+      </div>
+
+      <div class="grid-video">
+        <!-- Camera -->
+        <div>
+          <div class="video-container mb-16" id="reg-video-box">
+            <video id="reg-video" playsinline autoplay muted></video>
+            <canvas id="overlay-canvas"></canvas>
+            <div class="cam-idle" id="reg-idle">
+              <div class="cam-idle-icon">✋</div>
+              <div class="cam-idle-text">CAMERA OFFLINE<br>CLICK CAPTURE TO BEGIN</div>
+            </div>
+            <div class="cam-hud" id="reg-hud">
+              <div class="hud-corner tl"></div><div class="hud-corner tr"></div>
+              <div class="hud-corner bl"></div><div class="hud-corner br"></div>
+              <div class="hud-tag tl" id="reg-hud-mode">REGISTER ●</div>
+              <div class="hud-tag tr" id="reg-hud-frames">FRAMES: 0</div>
+              <div class="hud-tag bl" id="reg-hud-hand">HAND: —</div>
+            </div>
+            <div class="cap-progress" id="reg-progress">
+              <div class="cap-bar" id="reg-bar"></div>
+            </div>
+          </div>
+
+          <div class="waveform-wrap mb-16">
+            <div class="waveform-label">Gesture Signature Waveform</div>
+            <canvas id="wave-canvas" width="600" height="56"></canvas>
+          </div>
+
+          <!-- Log -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Capture Log</div>
+              <button class="btn btn-outline" style="padding:4px 10px;font-size:.65rem" onclick="clearLog('reg-log')">CLEAR</button>
+            </div>
+            <div class="log-wrap" id="reg-log"></div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex flex-col gap-16">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Profile</div></div>
+            <div class="card-body">
+              <div class="input-group">
+                <div class="input-label">USER NAME</div>
+                <input class="input" id="reg-name" placeholder="e.g. Alice" />
+              </div>
+              <div class="input-group">
+                <div class="input-label">GESTURE LABEL</div>
+                <input class="input" id="reg-label" placeholder="e.g. Peace sign" />
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Capture Settings</div></div>
+            <div class="card-body">
+              <div class="range-row">
+                <div class="range-label">Duration (sec)</div>
+                <input type="range" min="2" max="10" value="4" id="reg-dur" oninput="document.getElementById('reg-dur-val').textContent=this.value+'s'">
+                <div class="range-val" id="reg-dur-val">4s</div>
+              </div>
+              <div class="range-row">
+                <div class="range-label">Min Frames</div>
+                <input type="range" min="5" max="60" value="15" id="reg-minf" oninput="document.getElementById('reg-minf-val').textContent=this.value">
+                <div class="range-val" id="reg-minf-val">15</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Instructions</div></div>
+            <div class="card-body">
+              <div class="text-xs text-dim" style="line-height:2">
+                ▸ Pick a consistent hand pose<br>
+                ▸ Keep hand in frame throughout<br>
+                ▸ Good lighting improves accuracy<br>
+                ▸ Avoid movement during capture<br>
+                ▸ Same hand for register & verify
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-lg w-full" id="reg-btn" onclick="startRegister()">
+            ✋ &nbsp; Start Capture
+          </button>
+
+          <div class="card" id="reg-status-card" style="display:none">
+            <div class="card-body">
+              <div class="text-xs text-dim mb-8">LAST REGISTERED</div>
+              <div class="font-display" style="color:#fff;font-size:.9rem;font-weight:700" id="reg-last-name">—</div>
+              <div class="text-xs text-dim mt-8" id="reg-last-frames">— frames captured</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ VERIFY PAGE ════════ -->
+    <div class="page" id="page-verify">
+      <div class="page-header">
+        <div class="page-eyebrow">Biometric Verification</div>
+        <div class="page-title">Verify <span>Identity</span></div>
+        <div class="page-desc">Select a registered profile, perform the matching gesture, and authenticate.</div>
+      </div>
+
+      <div class="grid-video">
+        <!-- Camera -->
+        <div>
+          <div class="video-container mb-16" id="vfy-video-box">
+            <video id="vfy-video" playsinline autoplay muted></video>
+            <canvas id="vfy-canvas"></canvas>
+            <div class="cam-idle" id="vfy-idle">
+              <div class="cam-idle-icon">🔐</div>
+              <div class="cam-idle-text">CAMERA OFFLINE<br>SELECT PROFILE &amp; CAPTURE</div>
+            </div>
+            <div class="cam-hud" id="vfy-hud">
+              <div class="hud-corner tl"></div><div class="hud-corner tr"></div>
+              <div class="hud-corner bl"></div><div class="hud-corner br"></div>
+              <div class="hud-tag tl" id="vfy-hud-mode">VERIFY ●</div>
+              <div class="hud-tag tr" id="vfy-hud-frames">FRAMES: 0</div>
+              <div class="hud-tag bl" id="vfy-hud-hand">HAND: —</div>
+            </div>
+            <div class="cap-progress" id="vfy-progress">
+              <div class="cap-bar" id="vfy-bar"></div>
+            </div>
+          </div>
+
+          <div class="waveform-wrap mb-16">
+            <div class="waveform-label">Live Capture Waveform</div>
+            <canvas id="vfy-wave" width="600" height="56"></canvas>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Verify Log</div>
+              <button class="btn btn-outline" style="padding:4px 10px;font-size:.65rem" onclick="clearLog('vfy-log')">CLEAR</button>
+            </div>
+            <div class="log-wrap" id="vfy-log"></div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex flex-col gap-16">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Target Profile</div></div>
+            <div class="card-body">
+              <div class="input-group">
+                <div class="input-label">VERIFY AS</div>
+                <select class="input" id="vfy-profile" style="cursor:pointer">
+                  <option value="">— Select registered user —</option>
+                </select>
+              </div>
+              <div id="vfy-profile-info" style="display:none">
+                <div style="background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.1);border-radius:4px;padding:10px 12px;">
+                  <div class="text-xs text-dim mb-8">PROFILE INFO</div>
+                  <div class="text-sm" style="color:#fff" id="vfy-pname">—</div>
+                  <div class="text-xs text-dim mt-8" id="vfy-pgesture">Gesture: —</div>
+                  <div class="text-xs text-dim" id="vfy-pdate">Registered: —</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Match Settings</div></div>
+            <div class="card-body">
+              <div class="range-row">
+                <div class="range-label">Threshold (%)</div>
+                <input type="range" min="50" max="99" value="80" id="vfy-thresh" oninput="document.getElementById('vfy-thresh-val').textContent=this.value+'%'">
+                <div class="range-val" id="vfy-thresh-val">80%</div>
+              </div>
+              <div class="range-row">
+                <div class="range-label">Duration (sec)</div>
+                <input type="range" min="2" max="10" value="4" id="vfy-dur" oninput="document.getElementById('vfy-dur-val').textContent=this.value+'s'">
+                <div class="range-val" id="vfy-dur-val">4s</div>
+              </div>
+              <div class="text-xs text-dim mt-8">
+                Match % must exceed threshold for access. Higher = stricter.
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Session Stats</div></div>
+            <div class="card-body">
+              <div class="grid-2" style="gap:10px">
+                <div style="background:var(--surface);border-radius:4px;padding:12px;border:1px solid var(--border)">
+                  <div class="text-xs text-dim mb-8">ATTEMPTS</div>
+                  <div class="font-display" style="font-size:1.6rem;font-weight:800;color:#fff" id="vfy-stat-att">0</div>
+                </div>
+                <div style="background:var(--surface);border-radius:4px;padding:12px;border:1px solid var(--border)">
+                  <div class="text-xs text-dim mb-8">GRANTED</div>
+                  <div class="font-display" style="font-size:1.6rem;font-weight:800;color:var(--lime)" id="vfy-stat-gr">0</div>
+                </div>
+                <div style="background:var(--surface);border-radius:4px;padding:12px;border:1px solid var(--border)">
+                  <div class="text-xs text-dim mb-8">DENIED</div>
+                  <div class="font-display" style="font-size:1.6rem;font-weight:800;color:var(--rose)" id="vfy-stat-de">0</div>
+                </div>
+                <div style="background:var(--surface);border-radius:4px;padding:12px;border:1px solid var(--border)">
+                  <div class="text-xs text-dim mb-8">ACC RATE</div>
+                  <div class="font-display" style="font-size:1.6rem;font-weight:800;color:var(--cyan)" id="vfy-stat-acc">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-lg w-full" id="vfy-btn" onclick="startVerify()">
+            🔐 &nbsp; Capture & Verify
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ DASHBOARD PAGE ════════ -->
+    <div class="page" id="page-dashboard">
+      <div class="page-header">
+        <div class="page-eyebrow">Analytics</div>
+        <div class="page-title">Research <span>Dashboard</span></div>
+        <div class="page-desc">Visualize authentication metrics, accuracy trends, and session history.</div>
+      </div>
+
+      <div class="grid-3 mb-20">
+        <div class="stat-card cyan">
+          <div class="stat-label">Total Attempts</div>
+          <div class="stat-value cyan" id="d-attempts">0</div>
+          <div class="stat-sub">all sessions</div>
+        </div>
+        <div class="stat-card lime">
+          <div class="stat-label">Accuracy Rate</div>
+          <div class="stat-value lime" id="d-acc">—</div>
+          <div class="stat-sub">granted / total</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="stat-label">Avg Confidence</div>
+          <div class="stat-value amber" id="d-conf">—</div>
+          <div class="stat-sub">similarity score</div>
+        </div>
+      </div>
+
+      <div class="grid-2 mb-20">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Confidence Over Time</div>
+            <div class="card-subtitle">per attempt</div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap">
+              <canvas id="conf-chart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Result Distribution</div>
+            <div class="card-subtitle">session totals</div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap">
+              <canvas id="dist-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Attempt History</div>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn btn-outline" style="padding:5px 12px;font-size:.65rem" onclick="exportData()">⬇ EXPORT JSON</button>
+            <button class="btn btn-danger" style="padding:5px 12px;font-size:.65rem" onclick="clearHistory()">✕ CLEAR</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="tbl" id="history-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>TIME</th>
+                <th>USER</th>
+                <th>GESTURE</th>
+                <th>CONFIDENCE</th>
+                <th>THRESHOLD</th>
+                <th>RESULT</th>
+                <th>FRAMES</th>
+              </tr>
+            </thead>
+            <tbody id="history-body">
+              <tr><td colspan="8" style="text-align:center;color:var(--txt-dim);padding:30px">No attempts yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ PROFILES PAGE ════════ -->
+    <div class="page" id="page-profiles">
+      <div class="page-header">
+        <div class="page-eyebrow">User Management</div>
+        <div class="page-title">Gesture <span>Profiles</span></div>
+        <div class="page-desc">Manage registered gesture signatures. Profiles persist in browser localStorage.</div>
+      </div>
+
+      <div class="flex gap-12 mb-20 items-center">
+        <input class="input" id="new-user-input" placeholder="New user name..." style="max-width:240px">
+        <button class="btn btn-primary" onclick="addUser()">+ Add Profile</button>
+        <div style="margin-left:auto" class="text-xs text-dim"><span id="profile-count">0</span> profiles registered</div>
+      </div>
+
+      <div class="card">
+        <div style="overflow-x:auto">
+          <table class="tbl" id="profiles-table">
+            <thead>
+              <tr>
+                <th>NAME</th>
+                <th>GESTURE LABEL</th>
+                <th>REGISTERED</th>
+                <th>FRAMES</th>
+                <th>SIG DIMS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="profiles-body">
+              <tr><td colspan="6" style="text-align:center;color:var(--txt-dim);padding:30px">No profiles yet. Add a user above.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════ SETTINGS PAGE ════════ -->
+    <div class="page" id="page-settings">
+      <div class="page-header">
+        <div class="page-eyebrow">Configuration</div>
+        <div class="page-title">System <span>Settings</span></div>
+        <div class="page-desc">Tune matching parameters and manage application data.</div>
+      </div>
+
+      <div class="grid-2">
+        <div>
+          <div class="card mb-16">
+            <div class="card-header"><div class="card-title">Detection Engine</div></div>
+            <div class="card-body">
+              <div class="range-row">
+                <div class="range-label">Default Threshold</div>
+                <input type="range" min="50" max="99" value="80" id="s-thresh" oninput="document.getElementById('s-thresh-val').textContent=this.value+'%'">
+                <div class="range-val" id="s-thresh-val">80%</div>
+              </div>
+              <div class="range-row">
+                <div class="range-label">Capture Duration</div>
+                <input type="range" min="2" max="10" value="4" id="s-dur" oninput="document.getElementById('s-dur-val').textContent=this.value+'s'">
+                <div class="range-val" id="s-dur-val">4s</div>
+              </div>
+              <div class="range-row">
+                <div class="range-label">Min Valid Frames</div>
+                <input type="range" min="5" max="60" value="10" id="s-minf" oninput="document.getElementById('s-minf-val').textContent=this.value">
+                <div class="range-val" id="s-minf-val">10</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">Algorithm Info</div></div>
+            <div class="card-body">
+              <div class="text-xs" style="line-height:2.2;color:var(--txt-mid)">
+                <b style="color:var(--txt)">Landmark extraction:</b> MediaPipe HandLandmarker<br>
+                <b style="color:var(--txt)">Normalization:</b> Wrist-relative, scale by palm length<br>
+                <b style="color:var(--txt)">Signature dims:</b> 63 (21 landmarks × 3 axes)<br>
+                <b style="color:var(--txt)">Distance metric:</b> Cosine similarity<br>
+                <b style="color:var(--txt)">Aggregation:</b> Temporal mean across frames<br>
+                <b style="color:var(--txt)">Storage:</b> browser localStorage (JSON)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card mb-16">
+            <div class="card-header"><div class="card-title">MediaPipe Status</div></div>
+            <div class="card-body">
+              <div class="flex items-center gap-12 mb-16">
+                <div class="pip" id="mp-status-pip"></div>
+                <div class="text-sm" id="mp-status-text">Initializing...</div>
+              </div>
+              <button class="btn btn-outline w-full" onclick="reloadMP()">↺ Reload MediaPipe</button>
+            </div>
+          </div>
+
+          <div class="card mb-16">
+            <div class="card-header"><div class="card-title">Data Management</div></div>
+            <div class="card-body flex flex-col gap-12">
+              <button class="btn btn-outline w-full" onclick="exportData()">⬇ Export Session JSON</button>
+              <button class="btn btn-outline w-full" onclick="exportProfiles()">⬇ Export All Profiles</button>
+              <button class="btn btn-danger w-full" onclick="clearHistory()">✕ Clear Attempt History</button>
+              <button class="btn btn-danger w-full" onclick="clearAllData()">⚠ Reset All Data</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">About</div></div>
+            <div class="card-body text-xs text-dim" style="line-height:2">
+              GestureID Research Prototype v1.0<br>
+              Built with MediaPipe Tasks Vision 0.10.14<br>
+              Pure frontend · No server · No data sent externally<br>
+              All data stored locally in this browser
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ─── RESULT MODAL ─── -->
+<div class="modal-bg" id="result-modal">
+  <div class="modal">
+    <span class="modal-result-icon" id="m-icon">🔓</span>
+    <div class="modal-result-title" id="m-title">GRANTED</div>
+    <div class="modal-score" id="m-score">98%</div>
+    <div style="font-size:.6rem;letter-spacing:2px;color:var(--txt-dim);margin-bottom:18px" id="m-score-label">MATCH CONFIDENCE</div>
+    <div class="modal-desc" id="m-desc">Gesture verified successfully.</div>
+    <button class="btn btn-outline" onclick="closeModal()">DISMISS</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// APPLICATION STATE
+// ═══════════════════════════════════════════════════════
+const DB_KEY   = 'gestureID_profiles';
+const HIST_KEY = 'gestureID_history';
+
+const app = {
+  handLandmarker: null,
+  mpReady: false,
+  activeUser: null,
+  capturing: false,
+  stream: null,
+  history: [],
+  stats: { attempts: 0, granted: 0, denied: 0, scores: [] }
+};
+
+// ─── PERSISTENCE ───────────────────────────────────────
+function loadProfiles() {
+  try { return JSON.parse(localStorage.getItem(DB_KEY) || '{}'); } catch { return {}; }
+}
+
+function saveProfiles(p) {
+  localStorage.setItem(DB_KEY, JSON.stringify(p));
+}
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch { return []; }
+}
+
+function saveHistory(h) {
+  localStorage.setItem(HIST_KEY, JSON.stringify(h));
+}
+
+// ═══════════════════════════════════════════════════════
+// MEDIAPIPE
+// ═══════════════════════════════════════════════════════
+async function initMP() {
+  setMPStatus('loading');
+  try {
+    const { FilesetResolver, HandLandmarker } = window.__MP;
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    app.handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numHands: 1
+    });
+    app.mpReady = true;
+    setMPStatus('ready');
+    log('reg-log', 'MediaPipe ready', 'i');
+    log('vfy-log', 'MediaPipe ready', 'i');
+  } catch(e) {
+    setMPStatus('error');
+    log('reg-log', 'MP error: ' + e.message, 'e');
+  }
+}
+
+function setMPStatus(s) {
+  const pip = document.getElementById('mp-pip');
+  const pip2 = document.getElementById('mp-status-pip');
+  const txt = document.getElementById('mp-status-text');
+  const colors = { loading: '#ffb300', ready: '#b5ff3b', error: '#ff3b6b' };
+  const labels = { loading: 'Loading WASM model...', ready: 'MediaPipe loaded — GPU delegate active', error: 'Failed to load MediaPipe' };
+  [pip, pip2].forEach(el => { if(el) el.style.background = colors[s]; });
+  if(txt) txt.textContent = labels[s];
+}
+
+async function reloadMP() {
+  app.handLandmarker = null;
+  app.mpReady = false;
+  await initMP();
+}
+
+// ═══════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════
+function goTo(page, navEl) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  if (navEl) navEl.classList.add('active');
+  if (page === 'dashboard') refreshDashboard();
+  if (page === 'profiles') refreshProfilesTable();
+  if (page === 'verify')   refreshVerifySelect();
+  if (page === 'home')     refreshHome();
+}
+
+// ═══════════════════════════════════════════════════════
+// LOG
+// ═══════════════════════════════════════════════════════
+function log(containerId, msg, type='') {
+  const body = document.getElementById(containerId);
+  if (!body) return;
+  const now = new Date();
+  const t = [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map(x => x.toString().padStart(2,'0')).join(':');
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `<span class="log-t">${t}</span><span class="log-m ${type}">${msg}</span>`;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
+
+function clearLog(id) {
+  document.getElementById(id).innerHTML = '';
+}
+
+// ═══════════════════════════════════════════════════════
+// CAMERA
+// ═══════════════════════════════════════════════════════
+async function startCam(videoId, idleId, hudId) {
+  const vid = document.getElementById(videoId);
+  if (app.stream) { vid.srcObject = app.stream; return; }
+  app.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+  vid.srcObject = app.stream;
+  vid.classList.add('live');
+  document.getElementById(idleId).classList.add('hidden');
+  document.getElementById(hudId).classList.add('show');
+  return new Promise(r => vid.onloadeddata = r);
+}
+
+function stopCam(videoId, idleId, hudId) {
+  if (app.stream) { app.stream.getTracks().forEach(t => t.stop()); app.stream = null; }
+  const vid = document.getElementById(videoId);
+  vid.srcObject = null;
+  vid.classList.remove('live');
+  document.getElementById(idleId).classList.remove('hidden');
+  document.getElementById(hudId).classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════
+// GESTURE MATH
+// ═══════════════════════════════════════════════════════
+function extractSig(lm) {
+  const w = lm[0];
+  const ref = Math.hypot(lm[9].x - w.x, lm[9].y - w.y) || 1;
+  return lm.map(p => [(p.x-w.x)/ref, (p.y-w.y)/ref, p.z/ref]).flat();
+}
+
+function cosSim(a, b) {
+  let dot=0, na=0, nb=0;
+  for(let i=0;i<a.length;i++) { dot+=a[i]*b[i]; na+=a[i]*a[i]; nb+=b[i]*b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-9);
+}
+
+function meanVec(vecs) {
+  if (!vecs.length) return [];
+  const out = new Array(vecs[0].length).fill(0);
+  vecs.forEach(v => v.forEach((x,i) => out[i] += x));
+  return out.map(x => x / vecs.length);
+}
+
+// ═══════════════════════════════════════════════════════
+// WAVEFORM DRAWING
+// ═══════════════════════════════════════════════════════
+function drawWave(canvasId, vectors) {
+  const c = document.getElementById(canvasId);
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (!vectors.length) return;
+  const channels = [[0,'#00e5ff'],[21,'#ff3b6b'],[42,'#b5ff3b']];
+  channels.forEach(([ch, color]) => {
+    const vals = vectors.map(v => v[ch]);
+    const mn = Math.min(...vals), mx = Math.max(...vals), rng = (mx-mn)||1;
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = .75;
+    vals.forEach((v,i) => {
+      const x = (i/(vals.length-1))*c.width;
+      const y = c.height - ((v-mn)/rng)*c.height*.8 - c.height*.1;
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// LANDMARK DRAWING
+// ═══════════════════════════════════════════════════════
+const CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],
+  [13,17],[0,17],[17,18],[18,19],[19,20]
+];
+
+function drawLandmarks(canvasId, lm, vidEl) {
+  const c = document.getElementById(canvasId);
+  c.width = vidEl.videoWidth || vidEl.clientWidth;
+  c.height = vidEl.videoHeight || vidEl.clientHeight;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  ctx.strokeStyle = 'rgba(0,229,255,.7)';
+  ctx.lineWidth = 1.5;
+  CONNECTIONS.forEach(([a,b]) => {
+    ctx.beginPath();
+    ctx.moveTo(lm[a].x*c.width, lm[a].y*c.height);
+    ctx.lineTo(lm[b].x*c.width, lm[b].y*c.height);
+    ctx.stroke();
+  });
+  lm.forEach((p,i) => {
+    ctx.beginPath();
+    ctx.arc(p.x*c.width, p.y*c.height, i===0?5:2.5, 0, Math.PI*2);
+    ctx.fillStyle = i===0 ? '#ff3b6b' : 'rgba(0,229,255,.9)';
+    ctx.fill();
+  });
+}
+
+function clearCanvas(id) {
+  const c = document.getElementById(id);
+  if (c) c.getContext('2d').clearRect(0,0,c.width,c.height);
+}
+
+// ═══════════════════════════════════════════════════════
+// GENERIC CAPTURE ENGINE
+// ═══════════════════════════════════════════════════════
+async function runCapture({ videoId, canvasId, idleId, hudId, progressId, barId,
+  framesHudId, handHudId, waveCanvasId, durationSec, onFrame, onDone, logId, btnId }) {
+
+  if (app.capturing) return;
+  app.capturing = true;
+
+  const btn = document.getElementById(btnId);
+  btn.classList.add('btn-recording');
+  btn.textContent = '● Recording...';
+  btn.disabled = true;
+
+  try { await startCam(videoId, idleId, hudId); }
+  catch(e) {
+    log(logId, 'Camera error: ' + e.message, 'e');
+    resetBtn(btn); app.capturing = false; return;
+  }
+
+  if (!app.mpReady) {
+    log(logId, 'Waiting for MediaPipe...', 'w');
+    await initMP();
+  }
+
+  const vid = document.getElementById(videoId);
+  const prog = document.getElementById(progressId);
+  const bar  = document.getElementById(barId);
+  prog.classList.add('show');
+
+  const frames = [];
+  const start = performance.now();
+  const duration = durationSec * 1000;
+  let lastT = 0;
+
+  log(logId, `Starting ${durationSec}s capture...`, 'w');
+
+  return new Promise(resolve => {
+    function tick() {
+      if (!app.capturing) { resolve(frames); return; }
+      const elapsed = performance.now() - start;
+      const pct = Math.min(elapsed / duration, 1);
+      bar.style.width = (pct * 100) + '%';
+
+      if (vid.currentTime !== lastT && app.handLandmarker) {
+        lastT = vid.currentTime;
+        try {
+          const res = app.handLandmarker.detectForVideo(vid, performance.now());
+          if (res.landmarks?.length > 0) {
+            const lm = res.landmarks[0];
+            drawLandmarks(canvasId, lm, vid);
+            frames.push(extractSig(lm));
+            if (framesHudId) document.getElementById(framesHudId).textContent = `FRAMES: ${frames.length}`;
+            if (handHudId) document.getElementById(handHudId).textContent = 'HAND: DETECTED ✓';
+            if (waveCanvasId && frames.length % 3 === 0) drawWave(waveCanvasId, frames);
+            onFrame && onFrame(frames.length);
+          } else {
+            clearCanvas(canvasId);
+            if (handHudId) document.getElementById(handHudId).textContent = 'HAND: NOT FOUND';
+          }
+        } catch {}
+      }
+
+      if (elapsed < duration) requestAnimationFrame(tick);
+      else {
+        prog.classList.remove('show');
+        bar.style.width = '0%';
+        app.capturing = false;
+        clearCanvas(canvasId);
+        resetBtn(btn);
+        stopCam(videoId, idleId, hudId);
+        log(logId, `Captured ${frames.length} frames`, frames.length > 5 ? 's' : 'w');
+        onDone(frames);
+        resolve(frames);
+      }
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+function resetBtn(btn) {
+  btn.classList.remove('btn-recording');
+  btn.disabled = false;
+  btn.textContent = btn.dataset.label || 'Capture';
+}
+
+// ═══════════════════════════════════════════════════════
+// REGISTER FLOW
+// ═══════════════════════════════════════════════════════
+async function startRegister() {
+  const name  = document.getElementById('reg-name').value.trim();
+  const label = document.getElementById('reg-label').value.trim() || 'Unnamed Gesture';
+  const dur   = parseInt(document.getElementById('reg-dur').value);
+  const minF  = parseInt(document.getElementById('reg-minf').value);
+
+  if (!name) {
+    alert('Please enter a user name before registering.');
+    return;
+  }
+
+  const btn = document.getElementById('reg-btn');
+  btn.dataset.label = '✋  Start Capture';
+
+  await runCapture({
+    videoId: 'reg-video', canvasId: 'overlay-canvas',
+    idleId: 'reg-idle', hudId: 'reg-hud',
+    progressId: 'reg-progress', barId: 'reg-bar',
+    framesHudId: 'reg-hud-frames', handHudId: 'reg-hud-hand',
+    waveCanvasId: 'wave-canvas',
+    durationSec: dur, logId: 'reg-log', btnId: 'reg-btn',
+    onFrame: null,
+    onDone(frames) {
+      if (frames.length < minF) {
+        log('reg-log', `Only ${frames.length} frames (min ${minF}). Keep hand in frame.`, 'e');
+        showModal('error');
+        return;
+      }
+      const sig = meanVec(frames);
+      const profiles = loadProfiles();
+      profiles[name] = {
+        name, label,
+        signature: sig,
+        frames: frames.length,
+        registered: new Date().toISOString()
+      };
+      saveProfiles(profiles);
+      app.activeUser = name;
+      log('reg-log', `Registered "${name}" — ${sig.length} dims, ${frames.length} frames`, 's');
+      refreshUserDropdowns();
+      refreshHome();
+      document.getElementById('reg-status-card').style.display = 'block';
+      document.getElementById('reg-last-name').textContent = name + ' / ' + label;
+      document.getElementById('reg-last-frames').textContent = frames.length + ' frames captured';
+      showModal('saved', 100, name, label, frames.length);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// VERIFY FLOW
+// ═══════════════════════════════════════════════════════
+async function startVerify() {
+  const profileKey = document.getElementById('vfy-profile').value;
+  if (!profileKey) { alert('Select a profile to verify against.'); return; }
+
+  const profiles = loadProfiles();
+  const profile = profiles[profileKey];
+  if (!profile?.signature) { alert('No signature found for this profile. Please register first.'); return; }
+
+  const thresh = parseInt(document.getElementById('vfy-thresh').value) / 100;
+  const dur = parseInt(document.getElementById('vfy-dur').value);
+  const btn = document.getElementById('vfy-btn');
+  btn.dataset.label = '🔐  Capture & Verify';
+
+  await runCapture({
+    videoId: 'vfy-video', canvasId: 'vfy-canvas',
+    idleId: 'vfy-idle', hudId: 'vfy-hud',
+    progressId: 'vfy-progress', barId: 'vfy-bar',
+    framesHudId: 'vfy-hud-frames', handHudId: 'vfy-hud-hand',
+    waveCanvasId: 'vfy-wave',
+    durationSec: dur, logId: 'vfy-log', btnId: 'vfy-btn',
+    onFrame: null,
+    onDone(frames) {
+      if (frames.length < 5) {
+        log('vfy-log', 'Not enough frames — keep hand visible', 'e');
+        return;
+      }
+      const sig = meanVec(frames);
+      const sim = cosSim(sig, profile.signature);
+      const pct = Math.round(sim * 100);
+      const granted = sim >= thresh;
+
+      // Update stats
+      app.stats.attempts++;
+      app.stats.scores.push(pct);
+      if (granted) app.stats.granted++; else app.stats.denied++;
+
+      // Persist history
+      const hist = loadHistory();
+      hist.push({
+        time: new Date().toISOString(),
+        user: profile.name,
+        gesture: profile.label,
+        confidence: pct,
+        threshold: Math.round(thresh * 100),
+        granted,
+        frames: frames.length
+      });
+      saveHistory(hist);
+
+      // Update live stats
+      updateVfyStats();
+
+      log('vfy-log', `${profile.name}: ${pct}% match — ${granted ? 'GRANTED ✓' : 'DENIED ✗'}`, granted ? 's' : 'e');
+      document.getElementById('nb-attempts').textContent = app.stats.attempts;
+      showModal(granted ? 'granted' : 'denied', pct, profile.name, profile.label);
+    }
+  });
+}
+
+function updateVfyStats() {
+  document.getElementById('vfy-stat-att').textContent = app.stats.attempts;
+  document.getElementById('vfy-stat-gr').textContent = app.stats.granted;
+  document.getElementById('vfy-stat-de').textContent = app.stats.denied;
+  const acc = app.stats.attempts ? Math.round(app.stats.granted / app.stats.attempts * 100) + '%' : '—';
+  document.getElementById('vfy-stat-acc').textContent = acc;
+}
+
+// ═══════════════════════════════════════════════════════
+// VERIFY PROFILE SELECT
+// ═══════════════════════════════════════════════════════
+function refreshVerifySelect() {
+  const sel = document.getElementById('vfy-profile');
+  const profiles = loadProfiles();
+  sel.innerHTML = '<option value="">— Select registered user —</option>';
+  Object.values(profiles).forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name; opt.textContent = p.name + ' — ' + p.label;
+    sel.appendChild(opt);
+  });
+}
+
+document.addEventListener('change', e => {
+  if (e.target.id !== 'vfy-profile') return;
+  const profiles = loadProfiles();
+  const p = profiles[e.target.value];
+  const info = document.getElementById('vfy-profile-info');
+  if (p) {
+    info.style.display = 'block';
+    document.getElementById('vfy-pname').textContent = p.name;
+    document.getElementById('vfy-pgesture').textContent = 'Gesture: ' + p.label;
+    document.getElementById('vfy-pdate').textContent = 'Registered: ' + new Date(p.registered).toLocaleString();
+  } else {
+    info.style.display = 'none';
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// PROFILES
+// ═══════════════════════════════════════════════════════
+function addUser() {
+  const name = document.getElementById('new-user-input').value.trim();
+  if (!name) return;
+  const profiles = loadProfiles();
+  if (!profiles[name]) {
+    profiles[name] = { name, label: '(Not registered)', signature: null, frames: 0, registered: new Date().toISOString() };
+    saveProfiles(profiles);
+  }
+  document.getElementById('new-user-input').value = '';
+  refreshProfilesTable();
+  refreshUserDropdowns();
+}
+
+function deleteProfile(name) {
+  if (!confirm(`Delete profile "${name}"?`)) return;
+  const profiles = loadProfiles();
+  delete profiles[name];
+  saveProfiles(profiles);
+  refreshProfilesTable();
+  refreshUserDropdowns();
+}
+
+function refreshProfilesTable() {
+  const profiles = loadProfiles();
+  const pList = Object.values(profiles);
+  const tbody = document.getElementById('profiles-body');
+  document.getElementById('profile-count').textContent = pList.length;
+
+  if (!pList.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--txt-dim);padding:30px">No profiles yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = pList.map(p => `
+    <tr>
+      <td><b style="color:#fff">${p.name}</b></td>
+      <td>${p.label || '—'}</td>
+      <td class="text-xs text-dim">${p.registered ? new Date(p.registered).toLocaleString() : '—'}</td>
+      <td class="font-code">${p.frames || 0}</td>
+      <td class="font-code">${p.signature ? p.signature.length : '—'}</td>
+      <td>
+        <span class="badge ${p.signature ? 'badge-lime' : 'badge-dim'}" style="margin-right:8px">${p.signature ? 'ENROLLED' : 'EMPTY'}</span>
+        <button class="btn btn-danger" style="padding:4px 10px;font-size:.65rem" onclick="deleteProfile('${p.name}')">Delete</button>
+      </td>
+    </tr>
+  `).join
+function refreshUserDropdowns() {
+  const profiles = loadProfiles();
+  const keys = Object.keys(profiles);
+  const sel = document.getElementById('user-select');
+  sel.innerHTML = '<option value="">— Select user —</option>';
+  keys.forEach(k => {
+    const opt = document.createElement('option');
+    opt.value = k; opt.textContent = k;
+    if (k === app.activeUser) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  document.getElementById('nb-profiles').textContent = keys.length;
+  document.getElementById('tb-profiles').textContent = keys.length;
+  refreshVerifySelect();
+}
+
+function switchUser(name) {
+  app.activeUser = name;
+  document.getElementById('tb-user').textContent = name || '—';
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════
+function refreshDashboard() {
+  const hist = loadHistory();
+  const granted = hist.filter(h => h.granted).length;
+  const acc = hist.length ? Math.round(granted / hist.length * 100) : null;
+  const avgConf = hist.length ? Math.round(hist.reduce((s,h) => s + h.confidence, 0) / hist.length) : null;
+
+  document.getElementById('d-attempts').textContent = hist.length;
+  document.getElementById('d-acc').textContent = acc !== null ? acc + '%' : '—';
+  document.getElementById('d-conf').textContent = avgConf !== null ? avgConf + '%' : '—';
+
+  // History table
+  const tbody = document.getElementById('history-body');
+  if (!hist.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--txt-dim);padding:30px">No attempts yet.</td></tr>`;
+  } else {
+    tbody.innerHTML = [...hist].reverse().map((h,i) => `
+      <tr>
+        <td class="text-dim font-code">${hist.length - i}</td>
+        <td class="text-xs text-dim">${new Date(h.time).toLocaleTimeString()}</td>
+        <td><b style="color:#fff">${h.user}</b></td>
+        <td class="text-dim">${h.gesture}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="flex:1;height:3px;background:var(--border2);border-radius:2px;max-width:60px">
+              <div style="height:100%;width:${h.confidence}%;background:${h.confidence>=70?'var(--lime)':'var(--rose)'};border-radius:2px"></div>
+            </div>
+            <span class="font-code text-sm" style="color:${h.confidence>=70?'var(--lime)':'var(--rose)'}">${h.confidence}%</span>
+          </div>
+        </td>
+        <td class="font-code text-dim">${h.threshold}%</td>
+        <td><span class="badge ${h.granted ? 'badge-lime' : 'badge-rose'}">${h.granted ? 'GRANTED' : 'DENIED'}</span></td>
+        <td class="font-code text-dim">${h.frames}</td>
+      </tr>
+    `).join('');
+  }
+
+  drawCharts(hist);
+}
+
+function drawCharts(hist) {
+  // Confidence chart
+  const cc = document.getElementById('conf-chart');
+  const dc = document.getElementById('dist-chart');
+  if (!cc || !dc) return;
+
+  const cCtx = cc.getContext('2d');
+  cc.width = cc.offsetWidth || 400;
+  cc.height = cc.offsetHeight || 180;
+  cCtx.clearRect(0, 0, cc.width, cc.height);
+
+  if (hist.length > 1) {
+    const w = cc.width, h = cc.height;
+    const pad = { top: 16, right: 16, bottom: 24, left: 36 };
+    const vals = hist.map(x => x.confidence);
+    const maxV = 100, minV = 0;
+
+    // Grid
+    cCtx.strokeStyle = 'rgba(255,255,255,.05)';
+    cCtx.lineWidth = 1;
+    [25,50,75,100].forEach(v => {
+      const y = pad.top + (1 - v/100) * (h - pad.top - pad.bottom);
+      cCtx.beginPath();
+      cCtx.moveTo(pad.left, y);
+      cCtx.lineTo(w - pad.right, y);
+      cCtx.stroke();
+      cCtx.fillStyle = 'rgba(255,255,255,.2)';
+      cCtx.font = '9px DM Mono';
+      cCtx.fillText(v + '%', 4, y + 4);
+    });
+
+    // Line
+    const pts = vals.map((v,i) => ({
+      x: pad.left + (i/(vals.length-1)) * (w - pad.left - pad.right),
+      y: pad.top + (1 - v/100) * (h - pad.top - pad.bottom)
+    }));
+
+    // Fill
+    cCtx.beginPath();
+    pts.forEach((p,i) => i===0 ? cCtx.moveTo(p.x,p.y) : cCtx.lineTo(p.x,p.y));
+    cCtx.lineTo(pts[pts.length-1].x, h-pad.bottom);
+    cCtx.lineTo(pts[0].x, h-pad.bottom);
+    cCtx.closePath();
+    const grad = cCtx.createLinearGradient(0,pad.top,0,h-pad.bottom);
+    grad.addColorStop(0, 'rgba(0,229,255,.25)');
+    grad.addColorStop(1, 'rgba(0,229,255,0)');
+    cCtx.fillStyle = grad;
+    cCtx.fill();
+
+    // Line
+    cCtx.beginPath();
+    pts.forEach((p,i) => i===0 ? cCtx.moveTo(p.x,p.y) : cCtx.lineTo(p.x,p.y));
+    cCtx.strokeStyle = '#00e5ff';
+    cCtx.lineWidth = 2;
+    cCtx.stroke();
+
+    // Dots
+    pts.forEach(p => {
+      cCtx.beginPath();
+      cCtx.arc(p.x, p.y, 3, 0, Math.PI*2);
+      cCtx.fillStyle = '#00e5ff';
+      cCtx.fill();
+    });
+  } else {
+    cCtx.fillStyle = 'rgba(255,255,255,.15)';
+    cCtx.font = '12px DM Mono';
+    cCtx.textAlign = 'center';
+    cCtx.fillText('Not enough data', cc.width/2, cc.height/2);
+  }
+
+  // Distribution (bar chart)
+  const dCtx = dc.getContext('2d');
+  dc.width = dc.offsetWidth || 400;
+  dc.height = dc.offsetHeight || 180;
+  dCtx.clearRect(0, 0, dc.width, dc.height);
+
+  const g = hist.filter(h => h.granted).length;
+  const d = hist.length - g;
+  const w = dc.width, h = dc.height;
+
+  if (!hist.length) {
+    dCtx.fillStyle = 'rgba(255,255,255,.15)';
+    dCtx.font = '12px DM Mono';
+    dCtx.textAlign = 'center';
+    dCtx.fillText('No data yet', w/2, h/2);
+    return;
+  }
+
+  const max = Math.max(g, d, 1);
+  const barW = 80, gap = 40;
+  const total = barW*2 + gap;
+  const startX = (w - total) / 2;
+  const maxH = h - 60;
+
+  [[g,'#b5ff3b','GRANTED'], [d,'#ff3b6b','DENIED']].forEach(([val, color, label], i) => {
+    const bh = (val / max) * maxH;
+    const x = startX + i * (barW + gap);
+    const y = h - 30 - bh;
+
+    // Bar
+    const grad = dCtx.createLinearGradient(0, y, 0, h-30);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, color + '44');
+    dCtx.fillStyle = grad;
+    dCtx.beginPath();
+    dCtx.roundRect(x, y, barW, bh, [4,4,0,0]);
+    dCtx.fill();
+
+    // Value
+    dCtx.fillStyle = color;
+    dCtx.font = 'bold 18px Syne';
+    dCtx.textAlign = 'center';
+    dCtx.fillText(val, x + barW/2, y - 8);
+
+    // Label
+    dCtx.fillStyle = 'rgba(255,255,255,.4)';
+    dCtx.font = '9px DM Mono';
+    dCtx.fillText(label, x + barW/2, h - 10);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════════════════════
+function showModal(type, score, name, label, frames) {
+  const modal = document.getElementById('result-modal');
+  const icon  = document.getElementById('m-icon');
+  const title = document.getElementById('m-title');
+  const sc    = document.getElementById('m-score');
+  const desc  = document.getElementById('m-desc');
+  const scLbl = document.getElementById('m-score-label');
+
+  if (type === 'granted') {
+    icon.textContent = '🔓';
+    title.textContent = 'ACCESS GRANTED';
+    title.className = 'modal-result-title granted';
+    sc.textContent = score + '%';
+    sc.className = 'modal-score granted';
+    scLbl.textContent = 'MATCH CONFIDENCE';
+    desc.textContent = `Identity verified for "${name}". Gesture matched with ${score}% confidence.`;
+  } else if (type === 'denied') {
+    icon.textContent = '🔒';
+    title.textContent = 'ACCESS DENIED';
+    title.className = 'modal-result-title denied';
+    sc.textContent = score + '%';
+    sc.className = 'modal-score denied';
+    scLbl.textContent = 'MATCH CONFIDENCE';
+    desc.textContent = `Signature mismatch for "${name}". Confidence ${score}% is below threshold.`;
+  } else if (type === 'saved') {
+    icon.textContent = '✅';
+    title.textContent = 'GESTURE SAVED';
+    title.className = 'modal-result-title saved';
+    sc.textContent = '—';
+    sc.className = 'modal-score';
+    scLbl.textContent = frames ? frames + ' FRAMES' : '';
+    desc.textContent = `Profile "${name}" registered with gesture "${label}". Ready for verification.`;
+  } else {
+    icon.textContent = '⚠️';
+    title.textContent = 'ERROR';
+    title.className = 'modal-result-title denied';
+    sc.textContent = '—';
+    sc.className = 'modal-score denied';
+    desc.textContent = 'Capture failed. Ensure hand is visible and try again.';
+  }
+
+  modal.classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('result-modal').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════
+// DATA UTILITIES
+// ═══════════════════════════════════════════════════════
+function exportData() {
+  const hist = loadHistory();
+  const blob = new Blob([JSON.stringify({ history: hist, exported: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `gestureID_history_${Date.now()}.json`;
+  a.click();
+}
+
+function exportProfiles() {
+  const profiles = loadProfiles();
+  // Remove raw signatures to keep file small (optional)
+  const blob = new Blob([JSON.stringify({ profiles, exported: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `gestureID_profiles_${Date.now()}.json`;
+  a.click();
+}
+
+function clearHistory() {
+  if (!confirm('Clear all attempt history?')) return;
+  localStorage.removeItem(HIST_KEY);
+  app.stats = { attempts: 0, granted: 0, denied: 0, scores: [] };
+  updateVfyStats();
+  refreshDashboard();
+  document.getElementById('nb-attempts').textContent = '0';
+  log('vfy-log', 'History cleared', 'w');
+}
+
+function clearAllData() {
+  if (!confirm('⚠ This will delete ALL profiles and history. Are you sure?')) return;
+  localStorage.removeItem(DB_KEY);
+  localStorage.removeItem(HIST_KEY);
+  app.activeUser = null;
+  app.stats = { attempts: 0, granted: 0, denied: 0, scores: [] };
+  refreshUserDropdowns();
+  refreshProfilesTable();
+  refreshDashboard();
+  refreshHome();
+  document.getElementById('tb-user').textContent = '—';
+}
+
+function refreshHome() {
+  const profiles = loadProfiles();
+  const hist = loadHistory();
+  document.getElementById('home-profiles').textContent = Object.keys(profiles).length;
+  document.getElementById('home-attempts').textContent = hist.length;
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Load persisted data
+  app.history = loadHistory();
+  app.stats.attempts = app.history.length;
+  app.stats.granted  = app.history.filter(h=>h.granted).length;
+  app.stats.denied   = app.history.filter(h=>!h.granted).length;
+
+  refreshUserDropdowns();
+  refreshHome();
+  updateVfyStats();
+
+  document.getElementById('mp-status-text').textContent = 'Loading MediaPipe WASM model...';
+
+  // Init MediaPipe after module loads
+  setTimeout(() => {
+    if (window.__MP) initMP();
+    else {
+      setTimeout(() => {
+        if (window.__MP) initMP();
+        else { document.getElementById('mp-status-text').textContent = 'Failed to load — check internet connection'; }
+      }, 3000);
+    }
+  }, 800);
+});
+</script>
+</body>
+</html>
